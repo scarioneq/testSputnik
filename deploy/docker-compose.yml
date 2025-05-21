@@ -1,0 +1,81 @@
+services:
+  laravel:
+    container_name: laravel_app
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    volumes:
+      - ../backend:/var/www
+    working_dir: /var/www
+    environment:
+      - DB_CONNECTION=pgsql
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_DATABASE=laravel
+      - DB_USERNAME=admin
+      - DB_PASSWORD=admin
+    depends_on:
+      - postgres
+    command: >
+      sh -c "
+      echo 'Starting the build...' &&
+      echo 'Установка зависимостей...' &&
+      composer install --prefer-dist --no-progress --no-suggest --optimize-autoloader &&
+      echo 'Генерация ключа...' &&
+      php artisan key:generate &&
+      echo 'Установка миграций...' &&
+      php artisan migrate:fresh --force &&
+      echo 'Спавним сидеры...' &&
+      php artisan db:seed &&
+      php-fpm
+      "
+
+    networks:
+      - laravel_network
+
+  nginx:
+    container_name: nginx_server
+    image: nginx:1.25-alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ../backend:/var/www
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - laravel
+    networks:
+      - laravel_network
+
+  postgres:
+    container_name: postgres
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: laravel
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - laravel_network
+
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4:7.8
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    networks:
+      - laravel_network
+
+volumes:
+  postgres_data:
+
+networks:
+  laravel_network:
+    driver: bridge
